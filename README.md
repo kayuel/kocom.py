@@ -3,8 +3,9 @@
 ![Supports aarch64 Architecture][aarch64-shield] ![Supports amd64 Architecture][amd64-shield] ![Supports armhf Architecture][armhf-shield] ![Supports armv7 Architecture][armv7-shield] ![Supports i386 Architecture][i386-shield]
 
 ## About
-Kocom Wallpad with RS485 for 힐스테이트푸르지오수원
-
+Kocom Wallpad with RS485 for 창원롯데캐슬프리미어(HJ's 커스터마이징)
+원제작자 : https://github.com/kyet/kocom.py
+-------------------------------------------------------------------------------------
 ## Installation
 
 1. 홈어시스턴트의 Hass.io > ADD-ON STORE에서 Add new repository by URL에 https://github.com/vifrost/kocom.py 를 입력한 다음 ADD 버튼을 누릅니다.
