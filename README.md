@@ -7,7 +7,7 @@ Kocom Wallpad with RS485 for 창원롯데캐슬프리미어(HJ's 커스터마이
 -------------------------------------------------------------------------------------
 ## Installation
 
-1. 홈어시스턴트의 Hass.io > ADD-ON STORE에서 Add new repository by URL에 https://github.com/vifrost/kocom.py 를 입력한 다음 ADD 버튼을 누릅니다.
+1. 홈어시스턴트의 Hass.io > ADD-ON STORE에서 Add new repository by URL에 https://github.com/kayuel/kocom.py 를 입력한 다음 ADD 버튼을 누릅니다.
 2. ADD-ON STORE 페이지 하단에서 "Kocom Wallpad with RS485" 클릭합니다.
 3. "INSTALL" 버튼을 누르면 애드온이 설치됩니다. 최대 약 10분 정도 소요. 
 4. INSTALL 버튼위에 설치 애니메이션이 동작하는데 이것이 멈추더라도 REBUILD, START 버튼이 나타나지 않는 경우가 있습니다.
@@ -21,6 +21,8 @@ Kocom Wallpad with RS485 for 창원롯데캐슬프리미어(HJ's 커스터마이
 
 ## Change log
 
+(2023-04-28 수정) 커스터마이징 시작
+-------------------------------------------------------------------------------------
 (2022-11-07 수정) bedroom 삭제, room1,2,3으로 변경, kitchen 추가, 환기On/Off 제어 1,2,3단 반영
 
 -------------------------------------------------------------------------------------
