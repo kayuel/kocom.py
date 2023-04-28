@@ -4,7 +4,6 @@
 
 ## About
 Kocom Wallpad with RS485 for 창원롯데캐슬프리미어(HJ's 커스터마이징)
-원제작자 : https://github.com/kyet/kocom.py
 -------------------------------------------------------------------------------------
 ## Installation
 
