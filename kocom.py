@@ -435,6 +435,16 @@ def mqtt_on_message(mqttc, obj, msg):
         onoff_hex = 'ff' if command == 'on' else '00'
         light_id = int(topic_d[3])
 
+         # === [METHOD B] startup 시 거실 1번 불 OFF 명령 무시 ===
+        if (
+            topic_d[1] == 'livingroom' and
+            light_id == 1 and
+            command == 'off' and
+            time.time() - PROGRAM_START_TIME < 20
+        ):
+            logging.info("[STARTUP BLOCK] livingroom light 1 OFF ignored")
+            return
+
         # turn on/off multiple lights at once : e.g) kocom/livingroom/light/12/command
         if light_id > 0:
             while light_id > 0:
@@ -444,7 +454,6 @@ def mqtt_on_message(mqttc, obj, msg):
                 light_id = int(light_id/10)
         else:
             send_wait_response(dest=dev_id, value=value, log='light')
-
     # gas off : kocom/livingroom/gas/command
     elif 'gas' in topic_d:
         dev_id = device_h_dic['gas'] + room_h_dic.get(topic_d[1])
