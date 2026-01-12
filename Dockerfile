@@ -7,8 +7,7 @@ COPY run.sh kocom.conf kocom.py /
 
 # Install requirements for add-on
 RUN python3 -m pip install pyserial
-RUN python3 -m pip install paho-mqtt
-
+RUN python3 -m pip install paho-mqtt pyserial typing_extensions
 WORKDIR /share
 
 RUN chmod a+x /run.sh
