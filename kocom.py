@@ -873,7 +873,7 @@ def listen_hexdata():
             del cache_data[-1]
 
         # 정상 ACK 처리
-        if p_ret['type'] == 'ack':
+        if not wait_target.empty():
             ack_q.put(d)
             continue
 
