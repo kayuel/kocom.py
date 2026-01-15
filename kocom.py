@@ -89,22 +89,7 @@ def mqtt_on_connect(mqttc, userdata, flags, rc):
         logging.error("[MQTT] Connection error - {}: {}".format(rc, mqtt.connack_string(rc)))
 
 def mqtt_on_disconnect(mqttc, userdata, rc=0):
-    logging.error("[MQTT] Disconnected - " + str(rc))
-    threading.Thread(
-        target=mqtt_reconnect_worker,
-        daemon=True
-    ).start()
-
-def mqtt_reconnect_worker():
-    while True:
-        try:
-            time.sleep(5)
-            mqttc.reconnect()
-            logging.info("[MQTT] Reconnected")
-            break
-        except Exception as e:
-            logging.error("[MQTT] Reconnect failed: {}".format(e))
-
+    logging.error("[MQTT] Disconnected - "+str(rc))
 
 
 # serial/socket communication class & functions--------------------
@@ -218,54 +203,44 @@ class RS485Wrapper:
             time.sleep(10)
 
 
-def send(cmd, subcmd, room, data=None):
-    """
-    RS485 SEND (SAFE VERSION)
-    - send_lock 영구 점유 방지
-    - ACK 추정 로직 제거
-    - ACK timeout 시 즉시 실패 처리
-    """
 
-    global seq_t_dic
-
-    if data is None:
-        data = []
-
-    with send_lock:   # 🔴 핵심: 무조건 release 보장
-        while not ack_q.empty():
-            try:
-                ack_q.get_nowait()
-            except queue.Empty:
-                break
+def send(dest, src, cmd, value, log=None, check_ack=True):
+    send_lock.acquire()
+    ack_data.clear()
+    ret = False
+    for seq_h in seq_t_dic.keys(): # if there's no ACK received, then repeat sending with next sequence code
+        payload = type_h_dic['send'] + seq_h + '00' + dest + src + cmd + value
+        send_data = header_h + payload + chksum(payload) + trailer_h
         try:
-            pkt_list = make_packet(cmd, subcmd, room, data)
-            if not pkt_list:
-                logging.error("[SEND] make_packet failed")
-                return False
+            if rs485.write(bytearray.fromhex(send_data)) == False:
+                raise Exception('Not ready')
+        except Exception as ex:
+            logging.error("[RS485] Write error.[{}]".format(ex) )
+            break
+        if log != None:
+            logging.info('[SEND|{}] {}'.format(log, send_data))
+        if check_ack == False:
+            time.sleep(1)
+            ret = send_data
+            break
 
-            for pkt in pkt_list:
-                try:
-                    rs485.write(pkt)
-                    logging.debug("[SEND] %s", pkt.hex())
-                except Exception as e:
-                    logging.error("[SEND] write error: %s", e)
-                    return False
+        # wait and checking for ACK
+        ack_data.append(type_h_dic['ack'] + seq_h + '00' +  src + dest + cmd + value)
+        try:
+            ack_q.get(True, 1.3+0.2*random.random()) # random wait between 1.3~1.5 seconds for ACK
+            if config.get('Log', 'show_recv_hex') == 'True':
+                logging.info ('[ACK] OK')
+            ret = send_data
+            break
+        except queue.Empty:
+            pass
 
-            # === ACK 대기 ===
-            start = time.time()
-            while True:
-                try:
-                    d = ack_q.get(timeout=0.5)
-                    logging.debug("[ACK] recv %s", d.hex())
-                    return True   # ACK 정상 수신
-                except queue.Empty:
-                    if time.time() - start > ACK_TIMEOUT:
-                        logging.warning("[ACK] timeout")
-                        return False
-
-        except Exception as e:
-            logging.error("[SEND] exception: %s", e)
-            return False
+    if ret == False:
+        logging.info('[RS485] send failed. closing RS485. it will try to reconnect to RS485 shortly.')
+        rs485.close()
+    ack_data.clear()
+    send_lock.release()
+    return ret
 
 
 def chksum(data_h):
@@ -807,10 +782,7 @@ def read_serial():
     while True:
         try:
             d = rs485.read()
-            if not d:
-                continue
-            hex_d = '{:02x}'.format(d[0])
-
+            hex_d = '{0:02x}'.format(ord(d))
 
             buf += hex_d
             if buf[:len(header_h)] != header_h[:len(buf)]:
@@ -857,10 +829,7 @@ def read_serial():
 
 def listen_hexdata():
     while True:
-        try:
-            d = msg_q.get(timeout=5)
-        except queue.Empty:
-            continue
+        d = msg_q.get()
 
         if config.get('Log', 'show_recv_hex') == 'True':
             logging.info("[recv] " + d)
@@ -872,11 +841,19 @@ def listen_hexdata():
         if len(cache_data) > BUF_SIZE:
             del cache_data[-1]
 
-        # 정상 ACK 처리
-        if not wait_target.empty():
+        if p_ret['data_h'] in ack_data:
             ack_q.put(d)
             continue
 
+        if wait_target.empty() == False:
+            if p_ret['dest_h'] == wait_target.queue[0] and p_ret['type'] == 'ack':
+            #if p_ret['src_h'] == wait_target.queue[0] and p_ret['type'] == 'send':
+                if len(ack_data) != 0:
+                    logging.info("[ACK] No ack received, but responce packet received before ACK. Assuming ACK OK")
+                    ack_q.put(d)
+                    time.sleep(0.5)
+                wait_q.put(p_ret)
+                continue
         publish_status(p_ret)
 
 
@@ -917,8 +894,8 @@ if __name__ == "__main__":
     cache_data = []
 
     thread_list = []
-    thread_list.append(threading.Thread(target=read_serial, name='read_serial', daemon=True))
-    thread_list.append(threading.Thread(target=listen_hexdata, name='listen_hexdata', daemon=True))
+    thread_list.append(threading.Thread(target=read_serial, name='read_serial'))
+    thread_list.append(threading.Thread(target=listen_hexdata, name='listen_hexdata'))
     for thread_instance in thread_list:
         thread_instance.start()
 
