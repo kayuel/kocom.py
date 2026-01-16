@@ -416,7 +416,8 @@ def mqtt_on_message(mqttc, obj, msg):
     if topic_d[-1] != 'command':
         return
 
-    logging.info("[MQTT RECV] " + msg.topic + " " + str(msg.qos) + " " + str(msg.payload))
+    #logging.info("[MQTT RECV] " + msg.topic + " " + str(msg.qos) + " " + str(msg.payload))
+    logging.info(f"[MQTT RECV] topic={msg.topic} qos={msg.qos} retain={msg.retain} payload={msg.payload}")
 
     # thermo heat/off : kocom/room/thermo/3/heat_mode/command
     if 'thermo' in topic_d and 'heat_mode' in topic_d:
@@ -438,7 +439,6 @@ def mqtt_on_message(mqttc, obj, msg):
         value = '1100' + settemp_hex + '0000000000'
         send_wait_response(dest=dev_id, value=value, log='thermo settemp')
 
-    # light on/off : kocom/livingroom/light/1/command
     # light on/off : kocom/livingroom/light/1/command
     elif 'light' in topic_d:
         dev_id = device_h_dic['light'] + room_h_dic.get(topic_d[1])
