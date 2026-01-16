@@ -21,7 +21,6 @@ import paho.mqtt.client as mqtt
 import logging
 import configparser
 
-PROGRAM_START_TIME = time.time()
 
 # define -------------------------------
 SW_VERSION = '2022.11.08'
@@ -443,19 +442,12 @@ def mqtt_on_message(mqttc, obj, msg):
     elif 'light' in topic_d:
         dev_id = device_h_dic['light'] + room_h_dic.get(topic_d[1])
         value = query(dev_id)['value']
+        # accept only strict commands
+        if command not in ("on", "off"):
+            logging.warning(f"[MQTT] Ignored invalid light command payload={command!r} topic={msg.topic}")
+            return
         onoff_hex = 'ff' if command == 'on' else '00'
         light_id = int(topic_d[3])
-    
-        # === [METHOD B] startup 시 거실 1번 불 OFF 명령 무시 ===
-        if (
-            topic_d[1] == 'livingroom' and
-            light_id == 1 and
-            command == 'off' and
-            time.time() - PROGRAM_START_TIME < 20
-        ):
-            logging.info("[STARTUP BLOCK] livingroom light 1 OFF ignored")
-            return
-        # ======================================================
     
         # turn on/off multiple lights at once : e.g) kocom/livingroom/light/12/command
         if light_id > 0:
