@@ -21,6 +21,7 @@ import paho.mqtt.client as mqtt
 import logging
 import configparser
 
+PROGRAM_START_TIME = time.time()
 
 # define -------------------------------
 SW_VERSION = '2022.11.08'
