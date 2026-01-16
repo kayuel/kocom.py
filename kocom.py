@@ -206,41 +206,50 @@ class RS485Wrapper:
 
 def send(dest, src, cmd, value, log=None, check_ack=True):
     send_lock.acquire()
-    ack_data.clear()
-    ret = False
-    for seq_h in seq_t_dic.keys(): # if there's no ACK received, then repeat sending with next sequence code
-        payload = type_h_dic['send'] + seq_h + '00' + dest + src + cmd + value
-        send_data = header_h + payload + chksum(payload) + trailer_h
-        try:
-            if rs485.write(bytearray.fromhex(send_data)) == False:
-                raise Exception('Not ready')
-        except Exception as ex:
-            logging.error("[RS485] Write error.[{}]".format(ex) )
-            break
-        if log != None:
-            logging.info('[SEND|{}] {}'.format(log, send_data))
-        if check_ack == False:
-            time.sleep(1)
-            ret = send_data
-            break
+    try:
+        ack_data.clear()
+        ret = False
 
-        # wait and checking for ACK
-        ack_data.append(type_h_dic['ack'] + seq_h + '00' +  src + dest + cmd + value)
-        try:
-            ack_q.get(True, 1.3+0.2*random.random()) # random wait between 1.3~1.5 seconds for ACK
-            if config.get('Log', 'show_recv_hex') == 'True':
-                logging.info ('[ACK] OK')
-            ret = send_data
-            break
-        except queue.Empty:
-            pass
+        # If there's no ACK received, then repeat sending with next sequence code
+        for seq_h in seq_t_dic.keys():
+            payload = type_h_dic['send'] + seq_h + '00' + dest + src + cmd + value
+            send_data = header_h + payload + chksum(payload) + trailer_h
 
-    if ret == False:
-        logging.info('[RS485] send failed. closing RS485. it will try to reconnect to RS485 shortly.')
-        rs485.close()
-    ack_data.clear()
-    send_lock.release()
-    return ret
+            try:
+                if rs485.write(bytearray.fromhex(send_data)) == False:
+                    raise Exception('Not ready')
+            except Exception as ex:
+                logging.error("[RS485] Write error.[{}]".format(ex))
+                break
+
+            if log is not None:
+                logging.info('[SEND|{}] {}'.format(log, send_data))
+
+            if check_ack == False:
+                time.sleep(1)
+                ret = send_data
+                break
+
+            # wait and checking for ACK
+            ack_data.append(type_h_dic['ack'] + seq_h + '00' + src + dest + cmd + value)
+            try:
+                # random wait between 1.3~1.5 seconds for ACK
+                ack_q.get(True, 1.3 + 0.2 * random.random())
+                if config.get('Log', 'show_recv_hex') == 'True':
+                    logging.info('[ACK] OK')
+                ret = send_data
+                break
+            except queue.Empty:
+                pass
+
+        if ret == False:
+            logging.info('[RS485] send failed. closing RS485. it will try to reconnect to RS485 shortly.')
+            rs485.close()
+
+        return ret
+    finally:
+        ack_data.clear()
+        send_lock.release()
 
 
 def chksum(data_h):
@@ -526,7 +535,28 @@ def mqtt_on_message(mqttc, obj, msg):
 #===== parse hex packet --> publish MQTT =====
 
 def publish_status(p):
-    threading.Thread(target=packet_processor, args=(p,)).start()
+    """
+    Queue packets for processing by a fixed worker thread to avoid
+    unbounded thread creation (which can lead to stalls over time).
+    """
+    try:
+        proc_q.put_nowait(p)
+    except queue.Full:
+        logging.error('[proc_q] full - drop packet')
+
+
+def processor_worker():
+    while True:
+        p = proc_q.get()
+        try:
+            packet_processor(p)
+        except Exception as e:
+            logging.error('[processor_worker] error: %s', e)
+        finally:
+            try:
+                proc_q.task_done()
+            except Exception:
+                pass
 
 def packet_processor(p):
     logtxt = ""
@@ -804,9 +834,10 @@ def read_serial():
                 chksum_calc = chksum(buf[len(header_h):chksum_position*2])
                 chksum_buf = buf[chksum_position*2:chksum_position*2+2]
                 if chksum_calc == chksum_buf and buf[-len(trailer_h):] == trailer_h:
-                    if msg_q.full():
-                        logging.error('msg_q is full. probably error occured while running listen_hexdata thread. please manually restart the program.')
-                    msg_q.put(buf)  # valid packet
+                    try:
+                        msg_q.put_nowait(buf)  # valid packet
+                    except queue.Full:
+                        logging.error('msg_q is full. dropping packet to avoid stall.')
                     buf=''
                 else:
                     logging.info("[comm] invalid packet {} expected checksum {}".format(buf, chksum_calc))
@@ -885,6 +916,7 @@ if __name__ == "__main__":
 
     msg_q = queue.Queue(BUF_SIZE)
     ack_q = queue.Queue(1)
+    proc_q = queue.Queue(2000)
     ack_data = []
     wait_q = queue.Queue(1)
     wait_target = queue.Queue(1)
@@ -896,6 +928,7 @@ if __name__ == "__main__":
     thread_list = []
     thread_list.append(threading.Thread(target=read_serial, name='read_serial'))
     thread_list.append(threading.Thread(target=listen_hexdata, name='listen_hexdata'))
+    thread_list.append(threading.Thread(target=processor_worker, name='processor_worker'))
     for thread_instance in thread_list:
         thread_instance.start()
 
